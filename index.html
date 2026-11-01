@@ -89,6 +89,15 @@ h2 { font-family: var(--body); font-weight: 700; font-size: 0.95rem; letter-spac
 .seg button { height: 46px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); font-family: var(--mono); font-size: 1.05rem; color: var(--muted); }
 .seg button[aria-checked="true"] { border-color: var(--amber); color: var(--amber); background: var(--amber-dim); }
 
+.seg.two { grid-template-columns: 1fr 1fr; }
+.seg.two button { height: 52px; font-family: var(--body); font-weight: 700; font-size: 1rem; }
+.or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.15em; }
+.or::before, .or::after { content: ""; flex: 1; border-top: 1px dashed var(--line); }
+.prow input.codein { font-family: var(--mono); font-size: 1.3rem; letter-spacing: 0.12em; text-transform: uppercase; }
+.err { margin: 0; color: var(--red); font-size: 0.95rem; min-height: 1.2em; }
+.code { font-family: var(--mono); white-space: nowrap; font-size: clamp(1.8rem, 11vw, 3.4rem); letter-spacing: 0.08em; color: var(--fg); background: var(--panel); border: 2px solid var(--amber); border-radius: 12px; padding: 10px 8px; user-select: all; }
+.cmpout { margin: 0; font-family: var(--display); font-size: 1.2rem; color: var(--amber); min-height: 1.4em; }
+#cmp { text-align: left; }
 .chips { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .chips li { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; }
 .chips b { display: block; font-size: 0.92rem; }
@@ -207,14 +216,30 @@ h2 { font-family: var(--body); font-weight: 700; font-size: 0.95rem; letter-spac
       <p class="lede">Pass the phone. Beat the clock. Brag about it at dinner.</p>
     </header>
 
-    <div class="card">
+    <div class="seg two" role="radiogroup" aria-label="Game mode" id="mode">
+      <button type="button" role="radio" data-m="pass" id="mPass">Pass the phone</button>
+      <button type="button" role="radio" data-m="h2h" id="mH2h">Head to head</button>
+    </div>
+
+    <div class="card" id="passPanel">
       <div class="row-h"><h2>Players</h2><span class="muted" id="pcount"></span></div>
       <div id="plist" class="plist"></div>
       <button id="addP" class="btn ghost small" type="button">+ Add player</button>
     </div>
 
+    <div class="card" id="h2hPanel" hidden>
+      <h2>Your name</h2>
+      <div class="prow"><input id="h2hName" maxlength="16" autocomplete="off" aria-label="Your name" placeholder="Your name"></div>
+      <p class="rules">Each of you plays on your own phone. One of you creates a match and reads out the code, and the other joins with it. Both phones count down together and get the exact same challenges in the same order.</p>
+      <button id="create" class="btn primary" type="button">Create match</button>
+      <div class="or"><span>or</span></div>
+      <div class="prow"><input id="joinCode" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Match code" placeholder="Code, like KZPT-4236" class="codein"></div>
+      <button id="join" class="btn ghost" type="button">Join match</button>
+      <p id="joinErr" class="err" role="alert"></p>
+    </div>
+
     <div class="card">
-      <h2>Seconds per turn</h2>
+      <h2 id="secsTitle">Seconds per turn</h2>
       <div class="seg" role="radiogroup" aria-label="Seconds per turn" id="secs">
         <button type="button" role="radio" data-s="30" id="s30">30</button>
         <button type="button" role="radio" data-s="60" id="s60">60</button>
@@ -238,6 +263,15 @@ h2 { font-family: var(--body); font-weight: 700; font-size: 0.95rem; letter-spac
     </div>
 
     <div class="actions"><button id="start" class="btn primary" type="button">Start game</button></div>
+  </section>
+
+  <section id="lobby" class="screen center" hidden>
+    <div class="eyebrow">Match code</div>
+    <div id="lbCode" class="code"></div>
+    <p id="lbNote" class="passnote"></p>
+    <div id="lbLeft" class="bigscore">0:00</div>
+    <p id="lbAt" class="passnote"></p>
+    <div class="actions"><button id="lbCancel" class="btn ghost small" type="button">Cancel</button></div>
   </section>
 
   <section id="pass" class="screen center" hidden>
@@ -277,6 +311,14 @@ h2 { font-family: var(--body); font-weight: 700; font-size: 0.95rem; letter-spac
       <div><b id="teWrong">0</b><span>Missed</span></div>
       <div><b id="teStreak">0</b><span>Best streak</span></div>
     </div>
+    <div id="cmp" class="card" hidden>
+      <h2>Who won?</h2>
+      <div class="prow">
+        <input id="rival" inputmode="numeric" autocomplete="off" aria-label="Your opponent's score" placeholder="Their score">
+        <button id="cmpGo" class="btn primary small" type="button">Check</button>
+      </div>
+      <p id="cmpOut" class="cmpout" role="status"></p>
+    </div>
     <div class="actions"><button id="teNext" class="btn primary" type="button"></button></div>
   </section>
 
@@ -297,7 +339,14 @@ h2 { font-family: var(--body); font-weight: 700; font-size: 0.95rem; letter-spac
 (function () {
   "use strict";
   const $ = (s) => document.querySelector(s);
-  const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+  let R = Math.random;
+  const rand = (a, b) => Math.floor(R() * (b - a + 1)) + a;
+  function seeded(str) {
+    let h = 1779033703 ^ str.length;
+    for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+    let a = h >>> 0;
+    return function () { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
   const pick = (a) => a[rand(0, a.length - 1)];
   const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = rand(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -310,6 +359,10 @@ h2 { font-family: var(--body); font-weight: 700; font-size: 0.95rem; letter-spac
     names: store.get("rrf-names", ["Player 1", "Player 2"]),
     secs: store.get("rrf-secs", 60),
     muted: store.get("rrf-muted", false),
+    mode: store.get("rrf-mode", "pass") === "h2h" ? "h2h" : "pass",
+    me: store.get("rrf-me", ""),
+    match: null,
+    lastScore: 0,
     wins: {},
     round: 0,
     order: [],
@@ -340,7 +393,7 @@ h2 { font-family: var(--body); font-weight: 700; font-size: 0.95rem; letter-spac
   /* ---------- challenges ---------- */
   function near(ans, n) {
     const s = new Set([ans]); let spread = Math.max(3, Math.round(Math.abs(ans) * 0.15));
-    while (s.size < n) { const v = ans + rand(-spread, spread); if (v >= 0) s.add(v); spread++; }
+    while (s.size < n) { const v = ans + rand(-spread, spread); if (v >= 1) s.add(v); spread++; }
     return shuffle([...s]);
   }
   const COLORS = [["RED", "#ff5a44"], ["BLUE", "#4f8dff"], ["GREEN", "#3ddc84"], ["YELLOW", "#ffd23f"]];
@@ -412,7 +465,7 @@ h2 { font-family: var(--body); font-weight: 700; font-size: 0.95rem; letter-spac
   const TYPES = Object.keys(GEN);
 
   /* ---------- screens ---------- */
-  const SCREENS = ["setup", "pass", "play", "turnEnd", "results"];
+  const SCREENS = ["setup", "lobby", "pass", "play", "turnEnd", "results"];
   function show(id) { SCREENS.forEach((s) => { $("#" + s).hidden = s !== id; }); $(".app").scrollTop = 0; }
 
   /* ---------- setup ---------- */
@@ -430,6 +483,11 @@ h2 { font-family: var(--body); font-weight: 700; font-size: 0.95rem; letter-spac
     $("#pcount").textContent = `${S.names.length} of 6`;
     $("#addP").hidden = S.names.length >= 6;
     document.querySelectorAll("#secs button").forEach((b) => b.setAttribute("aria-checked", String(+b.dataset.s === S.secs)));
+    const h2h = S.mode === "h2h";
+    document.querySelectorAll("#mode button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.m === S.mode)));
+    $("#passPanel").hidden = h2h; $("#start").hidden = h2h; $("#h2hPanel").hidden = !h2h;
+    $("#secsTitle").textContent = h2h ? "Match length (if you create it)" : "Seconds per turn";
+    if (!$("#h2hName").value) $("#h2hName").value = S.me;
     $("#mute").textContent = S.muted ? "🔇" : "🔊";
     $("#mute").setAttribute("aria-label", S.muted ? "Sound off" : "Sound on");
   }
@@ -464,8 +522,9 @@ h2 { font-family: var(--body); font-weight: 700; font-size: 0.95rem; letter-spac
 
   /* ---------- turn ---------- */
   function clearTimers() { if (T) { T.timers.forEach(clearTimeout); T.timers = []; } }
-  function startTurn() {
-    T = { name: S.order[S.idx], score: 0, streak: 0, best: 0, right: 0, wrong: 0, n: 0, end: 0, last: null, lock: true, timers: [], raf: 0, lastSec: null };
+  function startTurn(startAt) {
+    if (!startAt) startAt = Date.now() + 2100;
+    T = { name: S.mode === "h2h" ? S.me : S.order[S.idx], score: 0, streak: 0, best: 0, right: 0, wrong: 0, n: 0, end: 0, last: null, lock: true, timers: [], raf: 0, lastSec: null };
     $("#hudName").textContent = T.name;
     $("#hudScore").textContent = "0";
     $("#hudTime").textContent = String(S.secs); $("#hudTime").classList.remove("low");
@@ -476,13 +535,22 @@ h2 { font-family: var(--body); font-weight: 700; font-size: 0.95rem; letter-spac
     $("#choices").innerHTML = ""; $("#choices").hidden = false; $("#choices").classList.remove("fill");
     show("play");
     const cd = $("#count"); cd.hidden = false;
-    let n = 3; cd.textContent = n; sfx.tick();
+    let shown = null;
     const step = () => {
-      n--;
-      if (n > 0) { cd.textContent = n; sfx.tick(); T.timers.push(setTimeout(step, 700)); }
-      else { cd.hidden = true; sfx.go(); T.end = performance.now() + S.secs * 1000; T.raf = requestAnimationFrame(tick); next(); }
+      if (!T) return;
+      const left = startAt - Date.now();
+      if (left > 0) {
+        const n = Math.min(3, Math.ceil(left / 1000));
+        if (n !== shown) { shown = n; cd.textContent = n; sfx.tick(); }
+        T.timers.push(setTimeout(step, Math.min(50, left)));
+      } else {
+        cd.hidden = true; sfx.go();
+        // Both phones end at the same wall-clock moment.
+        T.end = performance.now() + (startAt + S.secs * 1000 - Date.now());
+        T.raf = requestAnimationFrame(tick); next();
+      }
     };
-    T.timers.push(setTimeout(step, 700));
+    step();
   }
 
   function tick() {
@@ -504,10 +572,14 @@ h2 { font-family: var(--body); font-weight: 700; font-size: 0.95rem; letter-spac
   function next() {
     if (!T) return;
     clearTimers();
-    let type; do { type = pick(TYPES); } while (type === T.last);
-    T.last = type;
-    const d = Math.min(3, Math.floor(T.n / 5));
-    render(GEN[type](d));
+    // In head-to-head, challenge #n comes from the match code, so both phones get the same one.
+    if (S.mode === "h2h" && S.match) R = seeded(S.match.code + ":" + T.n);
+    try {
+      let type; do { type = pick(TYPES); } while (type === T.last);
+      T.last = type;
+      const d = Math.min(3, Math.floor(T.n / 5));
+      render(GEN[type](d));
+    } finally { R = Math.random; }
   }
 
   function render(c) {
@@ -599,14 +671,88 @@ h2 { font-family: var(--body); font-weight: 700; font-size: 0.95rem; letter-spac
     $("#teScore").textContent = String(r.score);
     $("#tePB").innerHTML = r.pb ? `<span class="pb">NEW PERSONAL BEST</span>` : "";
     $("#teRight").textContent = r.right; $("#teWrong").textContent = r.wrong; $("#teStreak").textContent = r.best;
-    const last = S.idx >= S.order.length - 1;
-    $("#teNext").textContent = last ? "See results" : `Pass to ${S.order[S.idx + 1]}`;
+    $("#cmp").hidden = S.mode !== "h2h";
+    $("#cmpOut").textContent = ""; $("#rival").value = "";
+    if (S.mode === "h2h") {
+      $("#teNext").textContent = "New match";
+      S.lastScore = r.score;
+    } else {
+      const last = S.idx >= S.order.length - 1;
+      $("#teNext").textContent = last ? "See results" : `Pass to ${S.order[S.idx + 1]}`;
+    }
     show("turnEnd");
   }
   $("#teNext").onclick = () => {
+    if (S.mode === "h2h") { S.match = null; renderSetup(); show("setup"); return; }
     if (S.idx >= S.order.length - 1) { showResults(); return; }
     S.idx++; showPass();
   };
+  $("#cmpGo").onclick = () => {
+    const v = parseInt($("#rival").value, 10);
+    if (isNaN(v) || v < 0) { $("#cmpOut").textContent = "Type their score as a number, like 2450."; return; }
+    const me = S.lastScore || 0;
+    if (me > v) { $("#cmpOut").textContent = `You win by ${me - v}. Enjoy it.`; sfx.win(); }
+    else if (v > me) { $("#cmpOut").textContent = `They win by ${v - me}. Rematch?`; sfx.bad(); }
+    else { $("#cmpOut").textContent = "Exact tie. Run it back."; }
+  };
+
+  /* ---------- head to head ---------- */
+  const LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZ";
+  function makeMatch() {
+    const now = Date.now();
+    const start = Math.ceil((now + 40000) / 30000) * 30000; // next :00 or :30 at least 40s away
+    const t = new Date(start);
+    let w = ""; for (let i = 0; i < 4; i++) w += LETTERS[Math.floor(Math.random() * LETTERS.length)];
+    const code = `${w}-${String(t.getMinutes()).padStart(2, "0")}${t.getSeconds() >= 30 ? 3 : 0}${S.secs / 10}`;
+    return { code, start, secs: S.secs };
+  }
+  function parseCode(raw) {
+    const s = String(raw).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const m = s.match(/^([A-Z]{4})(\d{2})([03])([369])$/);
+    if (!m || +m[2] > 59) return { err: "That code doesn't look right. It's 4 letters then 4 numbers, like KZPT-4236." };
+    const now = Date.now(), d = new Date(now);
+    d.setMinutes(+m[2], m[3] === "3" ? 30 : 0, 0);
+    let start = d.getTime();
+    if (start < now - 30 * 60000) start += 3600000;
+    if (start > now + 30 * 60000) start -= 3600000;
+    if (start <= now) return { err: "That match already started. Ask for a new code." };
+    if (start - now > 5 * 60000) return { err: "That code is for a different time. Check it and try again." };
+    return { code: `${m[1]}-${m[2]}${m[3]}${m[4]}`, start, secs: +m[4] * 10 };
+  }
+  const fmtTime = (ms) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  let lobbyTimer = 0;
+  function enterLobby(match, host) {
+    S.match = match; S.secs = match.secs;
+    S.me = ($("#h2hName").value.trim() || "Player").slice(0, 16);
+    store.set("rrf-me", S.me);
+    audio(); keepAwake();
+    $("#lbCode").textContent = match.code;
+    $("#lbNote").textContent = host
+      ? "Read this code to your opponent. They tap Join match and type it in before the clock runs out."
+      : "You're in. Same challenges, same order, same clock.";
+    $("#lbAt").textContent = `${match.secs}-second match starts at ${fmtTime(match.start)}`;
+    show("lobby");
+    clearInterval(lobbyTimer);
+    const upd = () => {
+      const left = match.start - Date.now();
+      if (left <= 3000) { clearInterval(lobbyTimer); startTurn(match.start); return; }
+      const s = Math.ceil(left / 1000);
+      $("#lbLeft").textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    };
+    upd(); lobbyTimer = setInterval(upd, 200);
+  }
+  $("#create").onclick = () => { S.names = readNames(); enterLobby(makeMatch(), true); };
+  $("#join").onclick = () => {
+    S.names = readNames();
+    const m = parseCode($("#joinCode").value);
+    if (m.err) { $("#joinErr").textContent = m.err; return; }
+    $("#joinErr").textContent = "";
+    enterLobby(m, false);
+  };
+  $("#lbCancel").onclick = () => { clearInterval(lobbyTimer); S.match = null; renderSetup(); show("setup"); };
+  document.querySelectorAll("#mode button").forEach((b) => {
+    b.onclick = () => { S.names = readNames(); S.mode = b.dataset.m; store.set("rrf-mode", S.mode); renderSetup(); };
+  });
 
   /* ---------- results ---------- */
   const WIN_LINES = [
